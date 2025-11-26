@@ -12,7 +12,7 @@ Demo này minh họa:
 ## 📁 Cấu trúc Project
 
 ```
-/Users/giahieunguyen/Desktop/A/
+/Users/giahieunguyen/Desktop/PTUDHTTTHD_DevOps/
 ├── .github/workflows/          # CI/CD Pipelines
 │   ├── ci-dev.yml             # Dev environment pipeline
 │   ├── ci-staging.yml         # Staging environment pipeline  
@@ -65,7 +65,7 @@ Demo này minh họa:
 
 1. **Tạo feature branch**
 ```bash
-cd /Users/giahieunguyen/Desktop/A
+cd /Users/giahieunguyen/Desktop/PTUDHTTTHD_DevOps
 git checkout -b feature/demo-cicd
 ```
 
@@ -201,7 +201,7 @@ Output:
 ```
 Initializing modules...
 Initializing provider plugins...
-- Finding hashicorp/aws versions...
+- Finding hashicorp/PTUDHTTTHD_DevOpsws versions...
 Terraform has been successfully initialized!
 ```
 
@@ -427,7 +427,7 @@ prod: Stable, error-only logging
 - **Documentation**: See `/docs` folder
 - **Workflows**: See `/.github/workflows`
 - **Terraform**: See `/terraform`
-- **Application**: See `/app`
+- **Application**: See `/PTUDHTTTHD_DevOpspp`
 
 ## 🙋 Questions?
 
