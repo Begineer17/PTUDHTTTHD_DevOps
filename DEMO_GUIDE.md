@@ -66,7 +66,7 @@ Demo này minh họa:
 1. **Tạo feature branch**
 ```bash
 cd /Users/giahieunguyen/Desktop/PTUDHTTTHD_DevOps
-git checkout -b feature/demo-cicd
+git checkout -b feature/demo-cicd-2
 ```
 
 2. **Make a simple change**
@@ -76,11 +76,11 @@ git add .
 git commit -m "feat: add demo file"
 ```
 
-3. **Push to develop để trigger pipeline**
+3. **Push to main để trigger pipeline**
 ```bash
-git checkout develop
-git merge feature/demo-cicd
-git push origin develop
+git checkout main
+git merge feature/demo-cicd-2
+git push origin main
 ```
 
 4. **Monitor workflow**
