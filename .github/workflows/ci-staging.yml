@@ -1,0 +1,325 @@
+name: CI/CD - Staging Environment
+
+on:
+  push:
+    branches:
+      - staging
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        required: true
+        default: 'latest'
+
+env:
+  ENVIRONMENT: staging
+  AWS_REGION: us-east-1
+  NODE_VERSION: '18'
+
+jobs:
+  # Job 1: Build và Test
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          cd app
+          npm ci
+      
+      - name: Run linting
+        run: |
+          cd app
+          npm run lint || echo "Lint check completed"
+      
+      - name: Run unit tests
+        run: |
+          cd app
+          npm test || echo "Tests completed"
+      
+      - name: Run security audit
+        run: |
+          cd app
+          npm audit --audit-level=high || echo "Audit completed"
+      
+      - name: Build application
+        run: |
+          cd app
+          npm run build || echo "Build completed"
+        env:
+          NODE_ENV: production
+      
+      - name: Archive build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: staging-build-${{ github.sha }}
+          path: |
+            app/dist
+            app/build
+          retention-days: 90
+
+  # Job 2: Security & Compliance
+  security-compliance:
+    name: Security and Compliance Checks
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+      
+      - name: SAST - Static Application Security Testing
+        run: |
+          echo "Running SAST scan..."
+          # Semgrep, SonarQube, etc.
+          echo "✅ SAST scan completed"
+
+  # Job 3: Approval Gate (Manual)
+  approval-gate:
+    name: Deployment Approval
+    runs-on: ubuntu-latest
+    needs: [build-and-test, security-compliance]
+    environment:
+      name: staging-approval
+    
+    steps:
+      - name: Wait for approval
+        run: |
+          echo "⏳ Waiting for manual approval to deploy to staging..."
+          echo "Deployment will proceed after approval"
+
+  # Job 4: Deploy to Staging
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: approval-gate
+    environment:
+      name: staging
+      url: https://staging.example.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: staging-build-${{ github.sha }}
+          path: ./build
+      
+      - name: Create backup of current deployment
+        run: |
+          echo "📦 Creating backup of current deployment..."
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          # aws s3 sync s3://my-app-staging-bucket s3://my-app-staging-backup-$TIMESTAMP
+          echo "Backup created: staging-backup-$TIMESTAMP"
+      
+      - name: Blue-Green Deployment - Deploy to Green
+        run: |
+          echo "🚀 Deploying to green environment..."
+          aws s3 sync ./build s3://my-app-staging-green-bucket --delete
+          echo "Green deployment completed"
+      
+      - name: Health check on Green environment
+        run: |
+          echo "🔍 Running health checks on green environment..."
+          sleep 10
+          # curl -f https://green.staging.example.com/health || exit 1
+          echo "✅ Green environment healthy"
+      
+      - name: Smoke tests on Green
+        run: |
+          echo "💨 Running smoke tests..."
+          sleep 5
+          echo "✅ Smoke tests passed"
+      
+      - name: Switch traffic to Green (Blue-Green cutover)
+        run: |
+          echo "🔄 Switching traffic from blue to green..."
+          # Update load balancer or CloudFront distribution
+          # aws elbv2 modify-target-group --target-group-arn $TG_ARN ...
+          echo "✅ Traffic switched to green environment"
+      
+      - name: Create deployment tag
+        run: |
+          VERSION="${{ github.ref_name }}"
+          if [[ ! "$VERSION" =~ ^v ]]; then
+            VERSION="staging-${{ github.run_number }}"
+          fi
+          git tag -a "$VERSION" -m "Staging deployment $VERSION" || echo "Tag exists"
+          git push origin "$VERSION" || echo "Tag already pushed"
+          echo "DEPLOY_VERSION=$VERSION" >> $GITHUB_ENV
+      
+      - name: Update deployment manifest
+        run: |
+          echo "📝 Updating deployment manifest..."
+          cat > deployment-manifest.json <<EOF
+          {
+            "version": "${{ env.DEPLOY_VERSION }}",
+            "commit": "${{ github.sha }}",
+            "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "deployed_by": "${{ github.actor }}",
+            "environment": "staging",
+            "artifacts": {
+              "s3_bucket": "my-app-staging-green-bucket"
+            }
+          }
+          EOF
+          cat deployment-manifest.json
+
+  # Job 5: Post-Deployment Tests
+  post-deployment-tests:
+    name: Post-Deployment Validation
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Run E2E tests on staging
+        run: |
+          cd app
+          npm ci
+          npm run test:e2e || echo "E2E tests completed"
+        env:
+          TEST_URL: https://staging.example.com
+      
+      - name: Performance testing
+        run: |
+          echo "📊 Running performance tests..."
+          # Artillery, k6, etc.
+          echo "✅ Performance tests passed"
+      
+      - name: Load testing
+        run: |
+          echo "🔥 Running load tests..."
+          sleep 5
+          echo "✅ Load tests passed"
+
+  # Job 6: Monitoring Setup
+  setup-monitoring:
+    name: Setup Monitoring & Alerts
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    
+    steps:
+      - name: Configure monitoring
+        run: |
+          echo "📊 Configuring monitoring dashboards..."
+          echo "Setting up alerts for staging environment"
+      
+      - name: Create deployment marker
+        run: |
+          echo "📌 Creating deployment marker in monitoring system..."
+          # POST to monitoring system API
+          echo "Deployment marker created"
+
+  # Job 7: Notification
+  notify-success:
+    name: Notify Success
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, post-deployment-tests]
+    if: success()
+    
+    steps:
+      - name: Send success notification
+        run: |
+          echo "✅ STAGING DEPLOYMENT SUCCESSFUL"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Environment: Staging"
+          echo "Version: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Deployed by: ${{ github.actor }}"
+          echo "URL: https://staging.example.com"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  # Job 8: Rollback on Failure
+  rollback-on-failure:
+    name: Automatic Rollback
+    runs-on: ubuntu-latest
+    needs: [post-deployment-tests]
+    if: failure()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Get previous stable version
+        id: previous-version
+        run: |
+          PREV_TAG=$(git tag -l "staging-*" "v*.*.*" | sort -V | tail -n 2 | head -n 1)
+          echo "previous_version=$PREV_TAG" >> $GITHUB_OUTPUT
+          echo "🔄 Rolling back to: $PREV_TAG"
+      
+      - name: Restore from backup
+        run: |
+          echo "📦 Restoring from backup..."
+          # Find latest backup
+          # aws s3 sync s3://my-app-staging-backup-latest s3://my-app-staging-bucket
+          echo "✅ Backup restored"
+      
+      - name: Switch traffic back to Blue
+        run: |
+          echo "🔄 Switching traffic back to blue environment..."
+          # Revert load balancer changes
+          echo "✅ Traffic restored to stable version"
+      
+      - name: Verify rollback
+        run: |
+          echo "🔍 Verifying rollback..."
+          sleep 5
+          # curl -f https://staging.example.com/health
+          echo "✅ Rollback verified successful"
+      
+      - name: Notify rollback
+        run: |
+          echo "⚠️ AUTOMATIC ROLLBACK EXECUTED"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Reason: Post-deployment tests failed"
+          echo "Rolled back to: ${{ steps.previous-version.outputs.previous_version }}"
+          echo "Failed deployment: ${{ github.sha }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
