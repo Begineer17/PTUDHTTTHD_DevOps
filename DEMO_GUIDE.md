@@ -66,7 +66,7 @@ Demo này minh họa:
 1. **Tạo feature branch**
 ```bash
 cd /Users/giahieunguyen/Desktop/PTUDHTTTHD_DevOps
-git checkout -b feature/demo-cicd-2
+git checkout -b feature/demo-cicd-5
 ```
 
 2. **Make a simple change**
@@ -79,7 +79,7 @@ git commit -m "feat: add demo file"
 3. **Push to main để trigger pipeline**
 ```bash
 git checkout main
-git merge feature/demo-cicd-2
+git merge feature/demo-cicd-5
 git push origin main
 ```
 
@@ -120,7 +120,7 @@ gh run watch
 
 ### Pipeline Features Demo:
 
-✅ **Automatic deployment** on push to `develop`  
+✅ **Automatic deployment** on push to `main`  
 ✅ **Multi-stage pipeline** (build → test → deploy)  
 ✅ **Artifact management** (build artifacts stored)  
 ✅ **Health checks** after deployment  
@@ -248,11 +248,11 @@ Or use the helper script:
 
 1. **Push code that fails tests**
 ```bash
-git checkout develop
+git checkout main
 echo "throw new Error('Fail');" >> app/src/index.js
 git add .
 git commit -m "test: trigger rollback"
-git push origin develop
+git push origin main
 ```
 
 2. **Pipeline detects failure**
@@ -337,7 +337,7 @@ prod: Stable, error-only logging
 ## ✅ What This Demo Accomplishes
 
 ### ✅ Yêu cầu 1: CI/CD với 2 môi trường
-- **Development**: Automatic deployment on push to `develop`
+- **Development**: Automatic deployment on push to `main`
 - **Staging**: Deployment with approval, blue-green strategy
 - **Features**: Multi-stage pipeline, health checks, auto-rollback
 
